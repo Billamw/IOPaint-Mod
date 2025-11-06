@@ -9,4 +9,4 @@ dist/
 IOPaint.egg-info/
 venv/
 tmp/
-iopaint/web_app/
+iopaint/models/
