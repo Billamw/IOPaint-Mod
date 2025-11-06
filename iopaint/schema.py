@@ -43,24 +43,13 @@ class CV2Flag(str, Enum):
     INPAINT_TELEA = "INPAINT_TELEA"
 
 
-class HDStrategy(str, Enum):
-    # Use original image size
-    ORIGINAL = "Original"
-    # Resize the longer side of the image to a specific size(hd_strategy_resize_limit),
-    # then do inpainting on the resized image. Finally, resize the inpainting result to the original size.
-    # The area outside the mask will not lose quality.
-    RESIZE = "Resize"
-    # Crop masking area(with a margin controlled by hd_strategy_crop_margin) from the original image to do inpainting
-    CROP = "Crop"
-
-
 class InpaintRequest(BaseModel):
     image: Optional[str] = Field(None, description="base64 encoded image")
     mask: Optional[str] = Field(None, description="base64 encoded mask")
 
 
     hd_strategy: str = Field(
-        HDStrategy.RESIZE,
+        "Resize",
         description="Different way to preprocess image, only used by erase models(e.g. lama/mat)",
     )
     hd_strategy_resize_limit: int = Field(

@@ -17,7 +17,7 @@ from pathlib import Path
 # limitations under the License.
 
 # Import the function you want to use
-from iopaint.batch_processing import single_inpaint
+from iopaint.processing import single_inpaint
 
 # --- Your Configuration ---
 # BASE_DIR = "APPR3/bottom"

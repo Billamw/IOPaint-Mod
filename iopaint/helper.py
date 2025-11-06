@@ -1,40 +1,18 @@
-import base64
-import imghdr
 import io
 import os
-import sys
-from typing import List, Optional, Dict, Tuple
+from typing import Optional
 
-from urllib.parse import urlparse
 import cv2
-from PIL import Image, ImageOps, PngImagePlugin
+from PIL import Image, ImageOps
 import numpy as np
 import torch
 from loguru import logger
-from torch.hub import get_dir
-
-
-
-
-def get_cache_path_by_url(url):
-    parts = urlparse(url)
-    hub_dir = get_dir()
-    model_dir = os.path.join(hub_dir, "checkpoints")
-    if not os.path.isdir(model_dir):
-        os.makedirs(model_dir)
-    print("model_dir:", model_dir)
-    filename = os.path.basename(parts.path)
-    cached_file = os.path.join(model_dir, filename)
-    return cached_file
 
 
 def ceil_modulo(x, mod):
     if x % mod == 0:
         return x
     return (x // mod + 1) * mod
-
-
-
 
 
 def load_jit_model(url_or_path, device, model_md5: str):
@@ -55,22 +33,6 @@ def numpy_to_bytes(image_numpy: np.ndarray, ext: str) -> bytes:
     )[1]
     image_bytes = data.tobytes()
     return image_bytes
-
-
-def pil_to_bytes(pil_img, ext: str, quality: int = 95, infos={}) -> bytes:
-    with io.BytesIO() as output:
-        kwargs = {k: v for k, v in infos.items() if v is not None}
-        if ext == "jpg":
-            ext = "jpeg"
-        if "png" == ext.lower() and "parameters" in kwargs:
-            pnginfo_data = PngImagePlugin.PngInfo()
-            pnginfo_data.add_text("parameters", kwargs["parameters"])
-            kwargs["pnginfo"] = pnginfo_data
-
-        pil_img.save(output, format=ext, quality=quality, **kwargs)
-        image_bytes = output.getvalue()
-    return image_bytes
-
 
 def load_img(img_bytes, gray: bool = False, return_info: bool = False):
     alpha_channel = None
@@ -158,160 +120,3 @@ def pad_img_to_modulo(
         ((0, out_height - height), (0, out_width - width), (0, 0)),
         mode="symmetric",
     )
-
-
-def boxes_from_mask(mask: np.ndarray) -> List[np.ndarray]:
-    """
-    Args:
-        mask: (h, w, 1)  0~255
-
-    Returns:
-
-    """
-    height, width = mask.shape[:2]
-    _, thresh = cv2.threshold(mask, 127, 255, 0)
-    contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-
-    boxes = []
-    for cnt in contours:
-        x, y, w, h = cv2.boundingRect(cnt)
-        box = np.array([x, y, x + w, y + h]).astype(int)
-
-        box[::2] = np.clip(box[::2], 0, width)
-        box[1::2] = np.clip(box[1::2], 0, height)
-        boxes.append(box)
-
-    return boxes
-
-
-def only_keep_largest_contour(mask: np.ndarray) -> List[np.ndarray]:
-    """
-    Args:
-        mask: (h, w)  0~255
-
-    Returns:
-
-    """
-    _, thresh = cv2.threshold(mask, 127, 255, 0)
-    contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-
-    max_area = 0
-    max_index = -1
-    for i, cnt in enumerate(contours):
-        area = cv2.contourArea(cnt)
-        if area > max_area:
-            max_area = area
-            max_index = i
-
-    if max_index != -1:
-        new_mask = np.zeros_like(mask)
-        return cv2.drawContours(new_mask, contours, max_index, 255, -1)
-    else:
-        return mask
-
-
-def is_mac():
-    return sys.platform == "darwin"
-
-
-def get_image_ext(img_bytes):
-    w = imghdr.what("", img_bytes)
-    if w is None:
-        w = "jpeg"
-    return w
-
-
-def decode_base64_to_image(
-    encoding: str, gray=False
-) -> Tuple[np.array, Optional[np.array], Dict, str]:
-    if encoding.startswith("data:image/") or encoding.startswith(
-        "data:application/octet-stream;base64,"
-    ):
-        encoding = encoding.split(";")[1].split(",")[1]
-    image_bytes = base64.b64decode(encoding)
-    ext = get_image_ext(image_bytes)
-    image = Image.open(io.BytesIO(image_bytes))
-
-    alpha_channel = None
-    try:
-        image = ImageOps.exif_transpose(image)
-    except:
-        pass
-    # exif_transpose will remove exif rotate info，we must call image.info after exif_transpose
-    infos = image.info
-
-    if gray:
-        image = image.convert("L")
-        np_img = np.array(image)
-    else:
-        if image.mode == "RGBA":
-            np_img = np.array(image)
-            alpha_channel = np_img[:, :, -1]
-            np_img = cv2.cvtColor(np_img, cv2.COLOR_RGBA2RGB)
-        else:
-            image = image.convert("RGB")
-            np_img = np.array(image)
-
-    return np_img, alpha_channel, infos, ext
-
-
-def concat_alpha_channel(rgb_np_img, alpha_channel) -> np.ndarray:
-    if alpha_channel is not None:
-        if alpha_channel.shape[:2] != rgb_np_img.shape[:2]:
-            alpha_channel = cv2.resize(
-                alpha_channel, dsize=(rgb_np_img.shape[1], rgb_np_img.shape[0])
-            )
-        rgb_np_img = np.concatenate(
-            (rgb_np_img, alpha_channel[:, :, np.newaxis]), axis=-1
-        )
-    return rgb_np_img
-
-
-def adjust_mask(mask: np.ndarray, kernel_size: int, operate):
-    # fronted brush color "ffcc00bb"
-    # kernel_size = kernel_size*2+1
-    mask[mask >= 127] = 255
-    mask[mask < 127] = 0
-
-    if operate == "reverse":
-        mask = 255 - mask
-    else:
-        kernel = cv2.getStructuringElement(
-            cv2.MORPH_ELLIPSE, (2 * kernel_size + 1, 2 * kernel_size + 1)
-        )
-        if operate == "expand":
-            mask = cv2.dilate(
-                mask,
-                kernel,
-                iterations=1,
-            )
-        else:
-            mask = cv2.erode(
-                mask,
-                kernel,
-                iterations=1,
-            )
-    res_mask = np.zeros((mask.shape[0], mask.shape[1], 4), dtype=np.uint8)
-    res_mask[mask > 128] = [255, 203, 0, int(255 * 0.73)]
-    res_mask = cv2.cvtColor(res_mask, cv2.COLOR_BGRA2RGBA)
-    return res_mask
-
-
-def gen_frontend_mask(bgr_or_gray_mask):
-    if len(bgr_or_gray_mask.shape) == 3 and bgr_or_gray_mask.shape[2] != 1:
-        bgr_or_gray_mask = cv2.cvtColor(bgr_or_gray_mask, cv2.COLOR_BGR2GRAY)
-
-    # fronted brush color "ffcc00bb"
-    # TODO: how to set kernel size?
-    kernel_size = 9
-    bgr_or_gray_mask = cv2.dilate(
-        bgr_or_gray_mask,
-        np.ones((kernel_size, kernel_size), np.uint8),
-        iterations=1,
-    )
-    res_mask = np.zeros(
-        (bgr_or_gray_mask.shape[0], bgr_or_gray_mask.shape[1], 4), dtype=np.uint8
-    )
-    res_mask[bgr_or_gray_mask > 128] = [255, 203, 0, int(255 * 0.73)]
-    res_mask = cv2.cvtColor(res_mask, cv2.COLOR_BGRA2RGBA)
-    return res_mask

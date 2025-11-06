@@ -8,11 +8,10 @@ import numpy as np
 from loguru import logger
 
 from iopaint.helper import (
-    boxes_from_mask,
     resize_max_size,
     pad_img_to_modulo,
 )
-from iopaint.schema import InpaintRequest, HDStrategy
+from iopaint.schema import InpaintRequest
 
 from iopaint.plugins.realesrgan import RealESRGANUpscaler
 from iopaint.schema import RunPluginRequest
