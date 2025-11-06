@@ -4,10 +4,6 @@ from typing import List
 from iopaint.schema import ModelType, ModelInfo
 from pathlib import Path
 
-from iopaint.const import (
-    DEFAULT_MODEL_DIR
-)
-
 
 def scan_inpaint_models(model_dir: Path) -> List[ModelInfo]:
     res = []
@@ -27,7 +23,7 @@ def scan_inpaint_models(model_dir: Path) -> List[ModelInfo]:
     return res
 
 def scan_models() -> List[ModelInfo]:
-    model_dir = os.getenv("XDG_CACHE_HOME", DEFAULT_MODEL_DIR)
+    model_dir = os.getenv("XDG_CACHE_HOME", )
     available_models = []
     available_models.extend(scan_inpaint_models(model_dir))
     return available_models

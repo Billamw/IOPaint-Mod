@@ -34,25 +34,7 @@ def ceil_modulo(x, mod):
     return (x // mod + 1) * mod
 
 
-def handle_error(model_path, model_md5, e):
-    _md5 = md5sum(model_path)
-    if _md5 != model_md5:
-        try:
-            os.remove(model_path)
-            logger.error(
-                f"Model md5: {_md5}, expected md5: {model_md5}, wrong model deleted. Please restart iopaint."
-                f"If you still have errors, please try download model manually first https://lama-cleaner-docs.vercel.app/install/download_model_manually.\n"
-            )
-        except:
-            logger.error(
-                f"Model md5: {_md5}, expected md5: {model_md5}, please delete {model_path} and restart iopaint."
-            )
-    else:
-        logger.error(
-            f"Failed to load model {model_path},"
-            f"please submit an issue at https://github.com/Sanster/lama-cleaner/issues and include a screenshot of the error:\n{e}"
-        )
-    exit(-1)
+
 
 
 def load_jit_model(url_or_path, device, model_md5: str):
@@ -60,25 +42,7 @@ def load_jit_model(url_or_path, device, model_md5: str):
         model_path = url_or_path
 
     logger.info(f"Loading model from: {model_path}")
-    try:
-        model = torch.jit.load(model_path, map_location="cpu").to(device)
-    except Exception as e:
-        handle_error(model_path, model_md5, e)
-    model.eval()
-    return model
-
-
-def load_model(model: torch.nn.Module, url_or_path, device, model_md5):
-    if os.path.exists(url_or_path):
-        model_path = url_or_path
-
-    try:
-        logger.info(f"Loading model from: {model_path}")
-        state_dict = torch.load(model_path, map_location="cpu")
-        model.load_state_dict(state_dict, strict=True)
-        model.to(device)
-    except Exception as e:
-        handle_error(model_path, model_md5, e)
+    model = torch.jit.load(model_path, map_location="cpu").to(device)
     model.eval()
     return model
 
@@ -289,16 +253,6 @@ def decode_base64_to_image(
             np_img = np.array(image)
 
     return np_img, alpha_channel, infos, ext
-
-
-def encode_pil_to_base64(image: Image, quality: int, infos: Dict) -> bytes:
-    img_bytes = pil_to_bytes(
-        image,
-        "png",
-        quality=quality,
-        infos=infos,
-    )
-    return base64.b64encode(img_bytes)
 
 
 def concat_alpha_channel(rgb_np_img, alpha_channel) -> np.ndarray:
