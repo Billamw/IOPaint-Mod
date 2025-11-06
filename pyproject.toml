@@ -54,7 +54,7 @@ dependencies = [
 
 [project.urls]
 # Ersetzt das 'url' Argument
-Repository = "https://github.com/Billamw/IOPaint_BA"
+Repository = "https://github.com/Billamw/IOPaint-Mod"
 
 [project.scripts]
 # Ersetzt 'entry_points'
