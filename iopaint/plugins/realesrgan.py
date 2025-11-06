@@ -442,7 +442,7 @@ class RealESRGANUpscaler(BasePlugin):
             model_path=model_path,
             model=model_info["model"](),
             half=True if "cuda" in str(self.device) and not self.no_half else False,
-            tile=512,
+            tile=0,
             tile_pad=10,
             pre_pad=10,
             device=self.device,

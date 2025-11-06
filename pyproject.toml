@@ -5,12 +5,12 @@ build-backend = "setuptools.build_meta"
 
 [project]
 # Core-Metadaten aus deiner setup.py
-name = "IOPaint"
-version = "1.6.0"
+name = "IOPaint-Mod"
+version = "1.0.0"
 authors = [
   { name="PanicByte", email="cwq1913@gmail.com" },
 ]
-description = "Image inpainting, outpainting tool powered by SOTA AI Model"
+description = "Image inpainting with LaMa and Real-ESRGAN"
 readme = "README.md"  # Ersetzt long_description und content_type
 requires-python = ">=3.7"
 classifiers = [
