@@ -1,4 +1,5 @@
 import math
+from pathlib import Path
 
 import cv2
 import numpy as np
@@ -7,7 +8,6 @@ from torch import nn
 import torch.nn.functional as F
 from loguru import logger
 
-from iopaint.helper import download_model
 from iopaint.plugins.base_plugin import BasePlugin
 from iopaint.schema import RunPluginRequest, RealESRGANModel
 
@@ -69,7 +69,7 @@ class RealESRGANer:
             loadnet = self.dni(model_path[0], model_path[1], dni_weight)
         else:
             # if the model_path starts with https, it will first download models to the folder: weights
-            loadnet = torch.load(model_path, map_location=torch.device("cpu"))
+            loadnet = torch.load(model_path, map_location=torch.device(self.device))
 
         # prefer to use params_ema
         if "params_ema" in loadnet:
@@ -434,7 +434,7 @@ class RealESRGANUpscaler(BasePlugin):
             raise ValueError(f"Unknown RealESRGAN model name: {name}")
         model_info = REAL_ESRGAN_MODELS[name]
 
-        model_path = download_model(model_info["url"], model_info["model_md5"])
+        model_path = str(Path(__file__).parent.resolve() / "../models/realesr-general-x4v3.pth")
         logger.info(f"RealESRGAN model path: {model_path}")
 
         self.model = RealESRGANer(

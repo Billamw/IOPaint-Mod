@@ -1,4 +1,5 @@
 import abc
+import base64
 from typing import Optional
 
 import cv2
@@ -10,11 +11,11 @@ from iopaint.helper import (
     boxes_from_mask,
     resize_max_size,
     pad_img_to_modulo,
-    switch_mps_device,
 )
-from iopaint.schema import InpaintRequest, HDStrategy, SDSampler
-from .helper.g_diffuser_bot import expand_image
-from .utils import get_scheduler
+from iopaint.schema import InpaintRequest, HDStrategy
+
+from iopaint.plugins.realesrgan import RealESRGANUpscaler
+from iopaint.schema import RunPluginRequest
 
 
 class InpaintModel:
@@ -30,7 +31,6 @@ class InpaintModel:
         Args:
             device:
         """
-        device = switch_mps_device(self.name, device)
         self.device = device
         self.init_model(device, **kwargs)
 
@@ -72,9 +72,6 @@ class InpaintModel:
 
         result, image, mask = self.forward_post_process(result, image, mask, config)
 
-        if config.sd_keep_unmasked_area:
-            mask = mask[:, :, np.newaxis]
-            result = result * (mask / 255) + image[:, :, ::-1] * (1 - (mask / 255))
         return result
 
     def forward_pre_process(self, image, mask, config):
@@ -91,48 +88,50 @@ class InpaintModel:
         return: BGR IMAGE
         """
         inpaint_result = None
-        # logger.info(f"hd_strategy: {config.hd_strategy}")
-        if config.hd_strategy == HDStrategy.CROP:
-            if max(image.shape) > config.hd_strategy_crop_trigger_size:
-                logger.info("Run crop strategy")
-                boxes = boxes_from_mask(mask)
-                crop_result = []
-                for box in boxes:
-                    crop_image, crop_box = self._run_box(image, mask, box, config)
-                    crop_result.append((crop_image, crop_box))
 
-                inpaint_result = image[:, :, ::-1]
-                for crop_image, crop_box in crop_result:
-                    x1, y1, x2, y2 = crop_box
-                    inpaint_result[y1:y2, x1:x2, :] = crop_image
+        if max(image.shape) > config.hd_strategy_resize_limit:
+            origin_size = image.shape[:2]
+            downsize_image = resize_max_size(
+                image, size_limit=config.hd_strategy_resize_limit
+            )
+            downsize_mask = resize_max_size(
+                mask, size_limit=config.hd_strategy_resize_limit
+            )
 
-        elif config.hd_strategy == HDStrategy.RESIZE:
-            if max(image.shape) > config.hd_strategy_resize_limit:
-                origin_size = image.shape[:2]
-                downsize_image = resize_max_size(
-                    image, size_limit=config.hd_strategy_resize_limit
-                )
-                downsize_mask = resize_max_size(
-                    mask, size_limit=config.hd_strategy_resize_limit
-                )
+            logger.info(
+                f"Run resize strategy, origin size: {image.shape} forward size: {downsize_image.shape}"
+            )
+            inpaint_result = self._pad_forward(
+                downsize_image, downsize_mask, config
+            )
 
-                logger.info(
-                    f"Run resize strategy, origin size: {image.shape} forward size: {downsize_image.shape}"
-                )
-                inpaint_result = self._pad_forward(
-                    downsize_image, downsize_mask, config
-                )
+            #########################
+            inpaint_result_uint8 = inpaint_result.astype(np.uint8)
 
-                # only paste masked area result
-                inpaint_result = cv2.resize(
-                    inpaint_result,
-                    (origin_size[1], origin_size[0]),
-                    interpolation=cv2.INTER_CUBIC,
-                )
-                original_pixel_indices = mask < 127
-                inpaint_result[original_pixel_indices] = image[:, :, ::-1][
-                    original_pixel_indices
-                ]
+            # _, buffer = cv2.imencode('.png', cv2.cvtColor(inpaint_result_uint8, cv2.COLOR_RGB2BGR))
+            _, buffer = cv2.imencode('.png', inpaint_result_uint8)
+            base64_string = base64.b64encode(buffer).decode('utf-8')
+            print("=======================================================UPSCALE WITH REAL-ESRGAN===========================================================")
+            model = RealESRGANUpscaler("realesr-general-x4v3", self.device)
+            inpaint_result = model.gen_image(
+                inpaint_result_uint8,
+                RunPluginRequest(name=RealESRGANUpscaler.name, image=base64_string, scale=4),
+            )
+            #########################
+
+            # only paste masked area result
+            inpaint_result = cv2.cvtColor(inpaint_result, cv2.COLOR_RGB2BGR)
+            inpaint_result = cv2.resize(
+                inpaint_result,
+                (origin_size[1], origin_size[0]),
+                interpolation=cv2.INTER_CUBIC,
+            )
+
+            
+            original_pixel_indices = mask < 127
+            inpaint_result[original_pixel_indices] = image[:, :, ::-1][
+                original_pixel_indices
+            ]
 
         if inpaint_result is None:
             inpaint_result = self._pad_forward(image, mask, config)
@@ -234,26 +233,6 @@ class InpaintModel:
 
         return result
 
-    def _apply_cropper(self, image, mask, config: InpaintRequest):
-        img_h, img_w = image.shape[:2]
-        l, t, w, h = (
-            config.croper_x,
-            config.croper_y,
-            config.croper_width,
-            config.croper_height,
-        )
-        r = l + w
-        b = t + h
-
-        l = max(l, 0)
-        r = min(r, img_w)
-        t = max(t, 0)
-        b = min(b, img_h)
-
-        crop_img = image[t:b, l:r, :]
-        crop_mask = mask[t:b, l:r]
-        return crop_img, crop_mask, (l, t, r, b)
-
     def _run_box(self, image, mask, box, config: InpaintRequest):
         """
 
@@ -268,138 +247,3 @@ class InpaintModel:
         crop_img, crop_mask, [l, t, r, b] = self._crop_box(image, mask, box, config)
 
         return self._pad_forward(crop_img, crop_mask, config), [l, t, r, b]
-
-
-class DiffusionInpaintModel(InpaintModel):
-    def __init__(self, device, **kwargs):
-        self.model_info = kwargs["model_info"]
-        self.model_id_or_path = self.model_info.path
-        super().__init__(device, **kwargs)
-
-    @torch.no_grad()
-    def __call__(self, image, mask, config: InpaintRequest):
-        """
-        images: [H, W, C] RGB, not normalized
-        masks: [H, W]
-        return: BGR IMAGE
-        """
-        # boxes = boxes_from_mask(mask)
-        if config.use_croper:
-            crop_img, crop_mask, (l, t, r, b) = self._apply_cropper(image, mask, config)
-            crop_image = self._scaled_pad_forward(crop_img, crop_mask, config)
-            inpaint_result = image[:, :, ::-1]
-            inpaint_result[t:b, l:r, :] = crop_image
-        elif config.use_extender:
-            inpaint_result = self._do_outpainting(image, config)
-        else:
-            inpaint_result = self._scaled_pad_forward(image, mask, config)
-
-        return inpaint_result
-
-    def _do_outpainting(self, image, config: InpaintRequest):
-        # cropper 和 image 在同一个坐标系下，croper_x/y 可能为负数
-        # 从 image 中 crop 出 outpainting 区域
-        image_h, image_w = image.shape[:2]
-        cropper_l = config.extender_x
-        cropper_t = config.extender_y
-        cropper_r = config.extender_x + config.extender_width
-        cropper_b = config.extender_y + config.extender_height
-        image_l = 0
-        image_t = 0
-        image_r = image_w
-        image_b = image_h
-
-        # 类似求 IOU
-        l = max(cropper_l, image_l)
-        t = max(cropper_t, image_t)
-        r = min(cropper_r, image_r)
-        b = min(cropper_b, image_b)
-
-        assert (
-            0 <= l < r and 0 <= t < b
-        ), f"cropper and image not overlap, {l},{t},{r},{b}"
-
-        cropped_image = image[t:b, l:r, :]
-        padding_l = max(0, image_l - cropper_l)
-        padding_t = max(0, image_t - cropper_t)
-        padding_r = max(0, cropper_r - image_r)
-        padding_b = max(0, cropper_b - image_b)
-
-        expanded_image, mask_image = expand_image(
-            cropped_image,
-            left=padding_l,
-            top=padding_t,
-            right=padding_r,
-            bottom=padding_b,
-        )
-
-        # 最终扩大了的 image, BGR
-        expanded_cropped_result_image = self._scaled_pad_forward(
-            expanded_image, mask_image, config
-        )
-
-        # RGB -> BGR
-        outpainting_image = cv2.copyMakeBorder(
-            image,
-            left=padding_l,
-            top=padding_t,
-            right=padding_r,
-            bottom=padding_b,
-            borderType=cv2.BORDER_CONSTANT,
-            value=0,
-        )[:, :, ::-1]
-
-        # 把 cropped_result_image 贴到 outpainting_image 上，这一步不需要 blend
-        paste_t = 0 if config.extender_y < 0 else config.extender_y
-        paste_l = 0 if config.extender_x < 0 else config.extender_x
-
-        outpainting_image[
-            paste_t : paste_t + expanded_cropped_result_image.shape[0],
-            paste_l : paste_l + expanded_cropped_result_image.shape[1],
-            :,
-        ] = expanded_cropped_result_image
-        return outpainting_image
-
-    def _scaled_pad_forward(self, image, mask, config: InpaintRequest):
-        longer_side_length = int(config.sd_scale * max(image.shape[:2]))
-        origin_size = image.shape[:2]
-        downsize_image = resize_max_size(image, size_limit=longer_side_length)
-        downsize_mask = resize_max_size(mask, size_limit=longer_side_length)
-        if config.sd_scale != 1:
-            logger.info(
-                f"Resize image to do sd inpainting: {image.shape} -> {downsize_image.shape}"
-            )
-        inpaint_result = self._pad_forward(downsize_image, downsize_mask, config)
-        # only paste masked area result
-        inpaint_result = cv2.resize(
-            inpaint_result,
-            (origin_size[1], origin_size[0]),
-            interpolation=cv2.INTER_CUBIC,
-        )
-
-        return inpaint_result
-
-    def set_scheduler(self, config: InpaintRequest):
-        scheduler_config = self.model.scheduler.config
-        sd_sampler = config.sd_sampler
-        if config.sd_lcm_lora and self.model_info.support_lcm_lora:
-            sd_sampler = SDSampler.lcm
-            logger.info(f"LCM Lora enabled, use {sd_sampler} sampler")
-        scheduler = get_scheduler(sd_sampler, scheduler_config)
-        self.model.scheduler = scheduler
-
-    def forward_pre_process(self, image, mask, config):
-        if config.sd_mask_blur != 0:
-            k = 2 * config.sd_mask_blur + 1
-            mask = cv2.GaussianBlur(mask, (k, k), 0)
-
-        return image, mask
-
-    def forward_post_process(self, result, image, mask, config):
-        if config.sd_match_histograms:
-            result = self._match_histograms(result, image[:, :, ::-1], mask)
-
-        if config.use_extender and config.sd_mask_blur != 0:
-            k = 2 * config.sd_mask_blur + 1
-            mask = cv2.GaussianBlur(mask, (k, k), 0)
-        return result, image, mask
