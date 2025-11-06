@@ -379,21 +379,20 @@ class RealESRGANUpscaler(BasePlugin):
     name = "RealESRGAN"
     support_gen_image = True
 
-    def __init__(self, name, device, no_half=False):
+    def __init__(self, model_path, device, no_half=False):
         super().__init__()
-        self.model_name = name
         self.device = device
         self.no_half = no_half
-        self._init_model(name)
+        self._init_model(model_path)
 
-    def _init_model(self, name):
-        from .basicsr import RRDBNet
+    def _init_model(self, model_path):
 
-        REAL_ESRGAN_MODELS = {
-            RealESRGANModel.realesr_general_x4v3: {
-                "url": "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.5.0/realesr-general-x4v3.pth",
-                "scale": 4,
-                "model": lambda: SRVGGNetCompact(
+        logger.info(f"RealESRGAN model path: {model_path}")
+
+        self.model = RealESRGANer(
+            scale=4,
+            model_path=model_path,
+            model=SRVGGNetCompact(
                     num_in_ch=3,
                     num_out_ch=3,
                     num_feat=64,
@@ -401,50 +400,8 @@ class RealESRGANUpscaler(BasePlugin):
                     upscale=4,
                     act_type="prelu",
                 ),
-                "model_md5": "91a7644643c884ee00737db24e478156",
-            },
-            RealESRGANModel.RealESRGAN_x4plus: {
-                "url": "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.1.0/RealESRGAN_x4plus.pth",
-                "scale": 4,
-                "model": lambda: RRDBNet(
-                    num_in_ch=3,
-                    num_out_ch=3,
-                    num_feat=64,
-                    num_block=23,
-                    num_grow_ch=32,
-                    scale=4,
-                ),
-                "model_md5": "99ec365d4afad750833258a1a24f44ca",
-            },
-            RealESRGANModel.RealESRGAN_x4plus_anime_6B: {
-                "url": "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.2.4/RealESRGAN_x4plus_anime_6B.pth",
-                "scale": 4,
-                "model": lambda: RRDBNet(
-                    num_in_ch=3,
-                    num_out_ch=3,
-                    num_feat=64,
-                    num_block=6,
-                    num_grow_ch=32,
-                    scale=4,
-                ),
-                "model_md5": "d58ce384064ec1591c2ea7b79dbf47ba",
-            },
-        }
-        if name not in REAL_ESRGAN_MODELS:
-            raise ValueError(f"Unknown RealESRGAN model name: {name}")
-        model_info = REAL_ESRGAN_MODELS[name]
-
-        model_path = str(Path(__file__).parent.resolve() / "../models/realesr-general-x4v3.pth")
-        logger.info(f"RealESRGAN model path: {model_path}")
-
-        self.model = RealESRGANer(
-            scale=model_info["scale"],
-            model_path=model_path,
-            model=model_info["model"](),
-            half=True if "cuda" in str(self.device) and not self.no_half else False,
+            half=False,
             tile=0,
-            tile_pad=10,
-            pre_pad=10,
             device=self.device,
         )
 

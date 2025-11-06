@@ -10,9 +10,10 @@ from iopaint.schema import InpaintRequest, ModelInfo, ModelType
 
 
 class ModelManager:
-    def __init__(self, name: str, device: torch.device, **kwargs):
+    def __init__(self, name: str, device: torch.device, lama_path: str, **kwargs):
         self.name = name
         self.device = device
+        self.lama_path = lama_path
         self.kwargs = kwargs
         self.available_models: Dict[str, ModelInfo] = {}
 
@@ -37,10 +38,10 @@ class ModelManager:
         }
 
 
-        return models[name](device, **kwargs)
+        return models[name](self.lama_path, device, **kwargs)
 
     @torch.inference_mode()
-    def __call__(self, image, mask, config: InpaintRequest):
+    def __call__(self, image, mask, esrgan_path: str, config: InpaintRequest):
         """
 
         Args:
@@ -51,7 +52,7 @@ class ModelManager:
         Returns:
             BGR image
         """
-        return self.model(image, mask, config).astype(np.uint8)
+        return self.model(image, mask, esrgan_path, config).astype(np.uint8)
 
     def switch(self, new_name: str):
         if new_name == self.name:

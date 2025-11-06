@@ -10,4 +10,5 @@ IOPaint.egg-info/
 venv/
 tmp/
 iopaint/models/
-TESTDATA/
+TESTDATA/*
+iopaint-test.py

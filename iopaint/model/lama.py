@@ -12,7 +12,6 @@ from iopaint.helper import (
 from iopaint.schema import InpaintRequest
 from .base import InpaintModel
 
-LAMA_MODEL_URL = str(Path(__file__).parent.resolve() / "../models/big-lama.pt")
 LAMA_MODEL_MD5 = os.environ.get("LAMA_MODEL_MD5", "e3aa4aaa15225a33ec84f9f4bc47e500")
 
 
@@ -21,8 +20,8 @@ class LaMa(InpaintModel):
     pad_mod = 8
     is_erase_model = True
 
-    def init_model(self, device, **kwargs):
-        self.model = load_jit_model(LAMA_MODEL_URL, device, LAMA_MODEL_MD5).eval()
+    def init_model(self, lama_path, device, **kwargs):
+        self.model = load_jit_model(lama_path, device, LAMA_MODEL_MD5).eval()
 
 
     def forward(self, image, mask, config: InpaintRequest):

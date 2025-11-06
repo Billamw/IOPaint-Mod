@@ -12,6 +12,8 @@ from iopaint.schema import InpaintRequest
 def single_inpaint(
         image_path_str: str,
         mask_path_str: str,
+        lama_path: str,
+        esrgan_path: str,
     ) -> np.ndarray:
         """
         Runs inpainting on a single image and returns the result
@@ -31,7 +33,7 @@ def single_inpaint(
             img = np.array(Image.open(image_path).convert("RGB"))
             mask_img = np.array(Image.open(mask_path).convert("L"))
 
-            model_manager = ModelManager(name="lama", device="cpu")
+            model_manager = ModelManager(name="lama", device="cpu", lama_path=lama_path)
 
             # 3. Resize Mask if dimensions don't match
             if mask_img.shape[:2] != img.shape[:2]:
@@ -44,7 +46,7 @@ def single_inpaint(
 
             # 4. Run Inpainting (using the pre-loaded model)
             # The model returns a BGR image (OpenCV default)
-            inpaint_result = model_manager(img, mask_img, inpaint_request)
+            inpaint_result = model_manager(img, mask_img, esrgan_path, inpaint_request)
 
             # 5. Convert color from BGR (cv2) to RGB (PIL/C#)
             inpaint_result_rgb = cv2.cvtColor(inpaint_result, cv2.COLOR_BGR2RGB)

@@ -24,17 +24,17 @@ class InpaintModel:
     pad_to_square = False
     is_erase_model = False
 
-    def __init__(self, device, **kwargs):
+    def __init__(self, lama_path, device, **kwargs):
         """
 
         Args:
             device:
         """
         self.device = device
-        self.init_model(device, **kwargs)
+        self.init_model(lama_path, device, **kwargs)
 
     @abc.abstractmethod
-    def init_model(self, device, **kwargs): ...
+    def init_model(self, lama_path, device, **kwargs): ...
 
 
     @abc.abstractmethod
@@ -76,7 +76,7 @@ class InpaintModel:
         return result, image, mask
 
     @torch.no_grad()
-    def __call__(self, image, mask, config: InpaintRequest):
+    def __call__(self, image, mask, esrgan_path: str, config: InpaintRequest):
         """
         images: [H, W, C] RGB, not normalized
         masks: [H, W]
@@ -107,7 +107,7 @@ class InpaintModel:
             _, buffer = cv2.imencode('.png', inpaint_result_uint8)
             base64_string = base64.b64encode(buffer).decode('utf-8')
             print("=======================================================UPSCALE WITH REAL-ESRGAN===========================================================")
-            model = RealESRGANUpscaler("realesr-general-x4v3", self.device)
+            model = RealESRGANUpscaler(esrgan_path, self.device)
             inpaint_result = model.gen_image(
                 inpaint_result_uint8,
                 RunPluginRequest(name=RealESRGANUpscaler.name, image=base64_string, scale=4),
