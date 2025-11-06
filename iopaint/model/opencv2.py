@@ -10,10 +10,6 @@ class OpenCV2(InpaintModel):
     pad_mod = 1
     is_erase_model = True
 
-    @staticmethod
-    def is_downloaded() -> bool:
-        return True
-
     def forward(self, image, mask, config: InpaintRequest):
         """Input image and output image have same size
         image: [H, W, C] RGB

@@ -7,8 +7,7 @@ from pathlib import Path
 
 from iopaint.helper import (
     norm_img,
-    load_jit_model,
-    get_cache_path_by_url,
+    load_jit_model
 )
 from iopaint.schema import InpaintRequest
 from .base import InpaintModel
@@ -25,9 +24,6 @@ class LaMa(InpaintModel):
     def init_model(self, device, **kwargs):
         self.model = load_jit_model(LAMA_MODEL_URL, device, LAMA_MODEL_MD5).eval()
 
-    @staticmethod
-    def is_downloaded() -> bool:
-        return os.path.exists(get_cache_path_by_url(LAMA_MODEL_URL))
 
     def forward(self, image, mask, config: InpaintRequest):
         """Input image and output image have same size

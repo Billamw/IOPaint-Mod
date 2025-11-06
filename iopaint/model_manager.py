@@ -4,7 +4,6 @@ import torch
 from loguru import logger
 import numpy as np
 
-from iopaint.download import scan_models
 from iopaint.model import models
 from iopaint.model.utils import torch_gc
 from iopaint.schema import InpaintRequest, ModelInfo, ModelType
@@ -16,7 +15,6 @@ class ModelManager:
         self.device = device
         self.kwargs = kwargs
         self.available_models: Dict[str, ModelInfo] = {}
-        self.scan_models()
 
         self.model = self.init_model(name, device, **kwargs)
 
@@ -26,24 +24,20 @@ class ModelManager:
 
     def init_model(self, name: str, device, **kwargs):
         logger.info(f"Loading model: {name}")
-        if name not in self.available_models:
-            raise NotImplementedError(
-                f"Unsupported model: {name}. Available models: {list(self.available_models.keys())}"
-            )
 
-        model_info = self.available_models[name]
+        model_info = ModelInfo(
+            name="lama",
+            path="lama",
+            model_type=ModelType.INPAINT,
+        )
+
         kwargs = {
             **kwargs,
             "model_info": model_info,
         }
 
-        
-        if model_info.name in models:
-            return models[name](device, **kwargs)
 
-
-
-        raise NotImplementedError(f"Unsupported model: {name}")
+        return models[name](device, **kwargs)
 
     @torch.inference_mode()
     def __call__(self, image, mask, config: InpaintRequest):
@@ -58,11 +52,6 @@ class ModelManager:
             BGR image
         """
         return self.model(image, mask, config).astype(np.uint8)
-
-    def scan_models(self) -> List[ModelInfo]:
-        available_models = scan_models()
-        self.available_models = {it.name: it for it in available_models}
-        return available_models
 
     def switch(self, new_name: str):
         if new_name == self.name:

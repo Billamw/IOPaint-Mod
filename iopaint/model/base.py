@@ -37,10 +37,6 @@ class InpaintModel:
     @abc.abstractmethod
     def init_model(self, device, **kwargs): ...
 
-    @staticmethod
-    @abc.abstractmethod
-    def is_downloaded() -> bool:
-        return False
 
     @abc.abstractmethod
     def forward(self, image, mask, config: InpaintRequest):
