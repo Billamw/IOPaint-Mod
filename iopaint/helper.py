@@ -18,6 +18,9 @@ def ceil_modulo(x, mod):
 def load_jit_model(url_or_path, device, model_md5: str):
     if os.path.exists(url_or_path):
         model_path = url_or_path
+    
+    else:
+        raise ValueError(f"Model path does not exist: {url_or_path}")
 
     logger.info(f"Loading model from: {model_path}")
     model = torch.jit.load(model_path, map_location=device).to(device)

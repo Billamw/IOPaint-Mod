@@ -39,6 +39,8 @@ start_time = time.time()
 result = single_inpaint(
     input_path,
     mask_path,
+    lama_path="iopaint/models/big-lama.pt",
+    esrgan_path="iopaint/models/realesr-general-x4v3.pth",
 )
 end_time = time.time()
 total_seconds = int(end_time - start_time)
