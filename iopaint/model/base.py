@@ -114,19 +114,29 @@ class InpaintModel:
             )
             #########################
 
-            # only paste masked area result
+
+            # The result from RealESRGAN is BGR
+            # Resize the inpainted result to the original image size
             inpaint_result = cv2.cvtColor(inpaint_result, cv2.COLOR_RGB2BGR)
-            inpaint_result = cv2.resize(
+            inpaint_result_resized = cv2.resize(
                 inpaint_result,
                 (origin_size[1], origin_size[0]),
                 interpolation=cv2.INTER_CUBIC,
-            )
+            ).astype(np.float32)
 
+            # Prepare the original image (convert from RGB to BGR)
+            original_bgr = cv2.cvtColor(image, cv2.COLOR_RGB2BGR).astype(np.float32)
+
+            # Prepare the mask for alpha blending
+            # Convert grayscale mask (0-255) to a 3-channel float array (0.0-1.0)
+            alpha = mask.astype(np.float32) / 255.0
+            alpha = cv2.cvtColor(alpha, cv2.COLOR_GRAY2BGR)
+
+            # Alpha blend: (inpainted * alpha) + (original * (1 - alpha))
+            blended_bgr = (inpaint_result_resized * alpha) + (original_bgr * (1.0 - alpha))
             
-            original_pixel_indices = mask < 127
-            inpaint_result[original_pixel_indices] = image[:, :, ::-1][
-                original_pixel_indices
-            ]
+            # Convert back to uint8 and assign to inpaint_result
+            inpaint_result = np.clip(blended_bgr, 0, 255).astype(np.uint8)
 
         if inpaint_result is None:
             inpaint_result = self._pad_forward(image, mask, config)
