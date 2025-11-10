@@ -1,3 +1,4 @@
+from typing import Union
 from pathlib import Path
 
 import cv2
@@ -11,17 +12,36 @@ from iopaint.schema import InpaintRequest
 
 def single_inpaint(
         image_path_str: str,
-        mask_path_str: str,
+        mask: Union[object, str],
         lama_path: str,
         esrgan_path: str,
     ) -> np.ndarray:
-        """
-        Runs inpainting on a single image and returns the result
-        as a NumPy array (RGB).
+        """Performs inpainting on a single image.
+
+        This function loads an image and a mask to perform inpainting. It can
+        handle a mask provided as either a file path (str) or a
+        custom object containing 'Data', 'Height',
+        and 'Width' attributes.
+
+        The resulting inpainted image is returned as an RGB NumPy array.
+
+        Args:
+            image_path_str (str): The file path to the input image.
+            mask (Union[object, str]):
+                The mask to be used for inpainting.
+                - If 'str', it's treated as a file path to a mask image.
+                - If 'object', it's expected to have 'Data', 'Height',
+                and 'Width' attributes to reconstruct the mask.
+            lama_path (str): The file path to the LaMa model checkpoint.
+            esrgan_path (str): The file path to the ESRGAN model for upscaling.
+
+        Returns:
+            np.ndarray: The inpainted image as an RGB NumPy array.
+            None: Returns None if an exception occurs during processing.
         """
         try:
             image_path = Path(image_path_str)
-            mask_path = Path(mask_path_str)
+            mask_path = ""
 
 
             inpaint_request = InpaintRequest(
@@ -31,7 +51,22 @@ def single_inpaint(
 
             # 2. Load Image and Mask
             img = np.array(Image.open(image_path).convert("RGB"))
-            mask_img = np.array(Image.open(mask_path).convert("L"))
+            if hasattr(mask, "Data") and hasattr(mask, "Height") and hasattr(mask, "Width"):
+        
+                print("C# MaskData object received. Reconstructing mask...")
+                
+                # 1. Get the 1D byte array
+                mask_bytes = np.array(mask.Data)
+                
+                # 2. Reshape it into the 2D (Height, Width) image
+                mask_img = mask_bytes.reshape(mask.Height, mask.Width)
+                
+            else:
+                mask_path = Path(mask)
+                # Fallback logic: Assume 'mask' is a string path
+                print(f"Mask path received. Loading mask from disk: {mask}")
+                mask_img = np.array(Image.open(mask_path).convert("L"))
+            
 
             model_manager = ModelManager(name="lama", device="cpu", lama_path=lama_path)
 
