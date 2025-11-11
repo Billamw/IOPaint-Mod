@@ -11,11 +11,12 @@ from iopaint.model_manager import ModelManager
 from iopaint.schema import InpaintRequest
 
 def single_inpaint(
-        image_path_str: str,
+        image: Union[object, str],
         mask: Union[object, str],
         lama_path: str,
         esrgan_path: str,
-    ) -> np.ndarray:
+    # ) -> np.ndarray:
+    ):
         """Performs inpainting on a single image.
 
         This function loads an image and a mask to perform inpainting. It can
@@ -40,7 +41,7 @@ def single_inpaint(
             None: Returns None if an exception occurs during processing.
         """
         try:
-            image_path = Path(image_path_str)
+            image_path = ""
             mask_path = ""
 
 
@@ -48,12 +49,22 @@ def single_inpaint(
                  hd_strategy="Resize",
                  hd_strategy_resize_limit=512
             )
+    
+            if hasattr(image, "Data") and hasattr(image, "Height") and hasattr(image, "Width") and hasattr(image, "Channels"):
+                print("C# ImageData object received. Reconstructing image...", flush=True)
 
-            # 2. Load Image and Mask
-            img = np.array(Image.open(image_path).convert("RGB"))
+                # 1. Get the 1D byte array
+                image_bytes = np.array(image.Data)
+                
+                # 2. Reshape it into the 3D (Height, Width, Channels) image
+                img = image_bytes.reshape(image.Height, image.Width, image.Channels)
+            else:
+                image_path = Path(image)
+                img = np.array(Image.open(image_path).convert("RGB"))
+            
             if hasattr(mask, "Data") and hasattr(mask, "Height") and hasattr(mask, "Width"):
         
-                print("C# MaskData object received. Reconstructing mask...")
+                print("C# MaskData object received. Reconstructing mask...", flush=True)
                 
                 # 1. Get the 1D byte array
                 mask_bytes = np.array(mask.Data)
@@ -64,7 +75,7 @@ def single_inpaint(
             else:
                 mask_path = Path(mask)
                 # Fallback logic: Assume 'mask' is a string path
-                print(f"Mask path received. Loading mask from disk: {mask}")
+                print(f"Mask path received. Loading mask from disk: {mask}", flush=True)
                 mask_img = np.array(Image.open(mask_path).convert("L"))
             
 
@@ -72,7 +83,7 @@ def single_inpaint(
 
             # 3. Resize Mask if dimensions don't match
             if mask_img.shape[:2] != img.shape[:2]:
-                print(f"Resizing mask {mask_path.name} to image {image_path.name} size.")
+                print(f"Resizing mask {mask_path.name} to image {image_path.name} size.", flush=True)
                 mask_img = cv2.resize(
                     mask_img,
                     (img.shape[1], img.shape[0]),
@@ -93,6 +104,6 @@ def single_inpaint(
             return inpaint_result_rgb
 
         except Exception as e:
-            print(f"Error during inpaint: {e}")
+            print(f"Error during inpaint: {e}", flush=True)
             logger.exception(e)
             return None
